@@ -1,4 +1,5 @@
 import { User } from "@prisma/client";
+import path from "path";
 import { HearManager } from "@vk-io/hear";
 import { IQuestionMessageContext } from "vk-io-question";
 import { root, starting_date } from '../index';
@@ -123,14 +124,26 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
         }
     })
     hearManager.hear(/!дамп/, async (context) => {
-        if (context.isOutbox == false && context.senderId == root && context?.text != undefined) {
-            await context.send(`Вы запустили процесс слива бд в тхт, давайте начнем`)
-            console.log(`Вы запустили процесс слива бд в тхт, давайте начнем`)
-            await exportQuestionsAndAnswers()
-            await context.send(`Вы завершили процесс слива бд в тхт, ладно`)
-            console.log(`Вы завершили процесс слива бд в тхт, ладно`)
+        if (!context.isOutbox && context.senderId === root && context?.text !== undefined) {
+            try {
+                await context.send('Вы запустили процесс слива базы данных в текстовый файл. Пожалуйста, подождите...');
+                console.log('Запуск процесса слива базы данных...');
+                await exportQuestionsAndAnswers();
+                await context.send('Процесс завершён. Загружаю файл...');
+                const filePath = path.resolve('questions_and_answers.txt'); // Абсолютный путь к файлу
+                await context.sendDocuments({
+                    value: filePath,
+                    filename: 'questions_and_answers.txt',
+                });
+    
+                console.log('Файл успешно отправлен пользователю.');
+            } catch (error) {
+                console.error('Ошибка при выполнении команды !дамп:', error);
+                await context.send('Произошла ошибка при выполнении команды. Попробуйте снова позже.');
+            }
         }
-    })
+    });
+    
     hearManager.hear(/!аптайм/, async (context) => {
         if (context.isOutbox == false && (context.senderId == root || await User_Access(context) == true) && context?.text != undefined) {
             const now = new Date();
