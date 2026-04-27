@@ -1,148 +1,223 @@
-import { root, tokenizer, tokenizer_sentence } from "../..";
-import { JaroWinklerDistance, DamerauLevenshteinDistance } from "natural";
+import { root, tokenizer_sentence } from "../..";
+import { JaroWinklerDistance } from "natural";
 import prisma from "../../module/prisma";
-import { findBestMatch } from "string-similarity";
-import { distance as levenshteinDistance } from 'fastest-levenshtein';
-import { compareTwoStrings } from 'string-similarity';
-import { Question } from "@prisma/client";
-import { Context, MessageContext, VK } from "vk-io";
+import { compareTwoStrings } from "string-similarity";
+import { Answer, Question } from "@prisma/client";
+import { Context, VK } from "vk-io";
 import { Add_Unknown } from "../education/education_egine";
 import { Input_Message_Cleaner } from "../clear_input";
 import { formatLogSections, formatSearchTitle, LogField, logWithContext } from "../../module/logger";
+import { findTextMatches, TextSearchRepository } from "./text_search";
 
-// Функция для токенизации текста
+interface ResearchResult {
+    text: string;
+    answer: string;
+    info: string;
+    status: boolean;
+}
+
+interface QuestionMatch {
+    queryQuestion: string;
+    sentenceQuestion: {
+        question: Question;
+        score: number;
+    }[];
+}
+
+interface SelectedAnswer {
+    id: number;
+    input: string;
+    question: string;
+    answer: string;
+    crdate: Date;
+}
+
+const questionRepository: TextSearchRepository<Question> = {
+    async loadAll(): Promise<readonly Question[]> {
+        return prisma.question.findMany({
+            orderBy: { id: "asc" },
+        });
+    },
+
+    async loadBatch(cursorId: number | undefined, batchSize: number): Promise<readonly Question[]> {
+        return prisma.question.findMany({
+            where: cursorId === undefined ? {} : { id: { gt: cursorId } },
+            orderBy: { id: "asc" },
+            take: batchSize,
+        });
+    },
+};
+
 async function tokenizeText(text: string): Promise<string[]> {
-    return await tokenizer_sentence.tokenize(text.toLowerCase()) || [];
-}
-// Асинхронный генератор для извлечения вопросов из базы данных порциями
-async function* Generator_Sentence(): AsyncGenerator<Question[]> {
-    const batchSize = 100000;
-    let cursor: number | undefined = undefined;
-    while (true) {
-        // Извлекаем порцию вопросов из базы данных
-        const questions: Question[] = await prisma.$queryRaw<Question[]>`
-            SELECT * FROM Question
-            WHERE id > ${cursor ?? 0}
-            ORDER BY id ASC
-            LIMIT ${batchSize}
-        `;
-        if (!questions.length) break;
-        // Возвращаем порцию вопросов через yield
-        yield questions;
-        // Обновляем курсор для извлечения следующей порции вопросов
-        cursor = questions[questions.length - 1].id;
-    }
-}
-// Интерфейс для объекта с результатом сравнения
-interface Match {
-    query_question: string;
-    sentence_question: { question: Question, score: number }[];
-}
-// Функция для поиска наилучшего совпадения для каждого предложения в query в массиве вопросов sentences
-async function findClosestMatch(query: string[], sentences: Question[]): Promise<Match[]> {
-    const matches: Match[] = [];
-    await Promise.all(query.map(async (query_question) => {
-        const sentence_question: { question: Question; score: number }[] = (await Promise.all(sentences.map(async (sentence) => {
-            const jaroWinklerScore = JaroWinklerDistance(query_question, sentence.text, {});
-            //const levenshteinScore = 1 / (levenshteinDistance(query_question, sentence.text) + 1);
-            const cosineScore = compareTwoStrings(query_question, sentence.text);
-            const score = (cosineScore*2 + jaroWinklerScore)/3;
-            if (score >= 0.4) {
-                return { question: sentence, score: score };
-            }
-            return undefined;
-        }))).filter((q): q is { question: Question; score: number } => q !== undefined);
-            matches.push({ query_question, sentence_question });
-    }));
-    return matches;
+    return tokenizer_sentence.tokenize(text.toLowerCase()) || [];
 }
 
-async function Reseacher_New_Format(res: { text: string, answer: string, info: string, status: boolean }, context: Context | any, data_old: number, vk: VK) {
-    const sentence_array = await tokenizeText(context.text!);
-    const matchGenerator = Generator_Sentence();
-    let result: Match[] = [];
-    for await (const sentences of matchGenerator) {
-        const matches = await findClosestMatch(sentence_array, sentences);
-        result = result.concat(matches);
-    }
-    const output: Match[] = result.reduce((acc: Match[], item: Match) => {
-        const existingItem = acc.find(obj => obj.query_question === item.query_question);
-        if (existingItem) {
-            existingItem.sentence_question.push(...item.sentence_question.filter((q: any) => !existingItem.sentence_question.some((eq: any) => eq.id === q.id)));
-        } else {
-            acc.push({ query_question: item.query_question, sentence_question: item.sentence_question });
-        }
-        return acc;
-    }, []);
-    output.map((match) => ({
-        ...match,
-        sentence_question: match.sentence_question.sort((a, b) => b.score - a.score),
+async function findClosestMatches(queries: readonly string[]): Promise<QuestionMatch[]> {
+    const results = await findTextMatches({
+        cacheKey: "questions",
+        queries,
+        repository: questionRepository,
+        score: calculateQuestionScore,
+        accept: score => score >= 0.4,
+    });
+
+    return results.map(result => ({
+        queryQuestion: result.queryText,
+        sentenceQuestion: result.matches.map(match => ({
+            question: match.record,
+            score: match.score,
+        })),
     }));
-    res = await processInputData(res, output, context, data_old, vk)
-    //console.log(JSON.stringify(output, null, 2));
-    return res
 }
 
-// Определяем функцию для обработки входных данных
-async function processInputData(res: { text: string, answer: string, info: string, status: boolean }, data: Match[], context: Context | any, data_old: number, vk: VK) {
-    const answers = []
+function calculateQuestionScore(queryQuestion: string, question: Question): number {
+    const jaroWinklerScore = JaroWinklerDistance(queryQuestion, question.text, {});
+    const cosineScore = compareTwoStrings(queryQuestion, question.text);
+
+    return (cosineScore * 2 + jaroWinklerScore) / 3;
+}
+
+async function Reseacher_New_Format(
+    res: ResearchResult,
+    context: Context | any,
+    data_old: number,
+    vk: VK,
+): Promise<ResearchResult> {
+    const sentenceArray = await tokenizeText(context.text!);
+    const output = await findClosestMatches(sentenceArray);
+
+    return processInputData(res, output, context, data_old, vk);
+}
+
+async function processInputData(
+    res: ResearchResult,
+    data: QuestionMatch[],
+    context: Context | any,
+    data_old: number,
+    vk: VK,
+): Promise<ResearchResult> {
+    const answers: SelectedAnswer[] = [];
     const educationQuestions: string[] = [];
-    for (const obj of data) {
-        if (obj.sentence_question.length > 0) {
-            const answer = await prisma.answer.findMany({
-            where: { id_question: obj.sentence_question[0].question.id },
-            take: 100,
-            })
-            if (answer.length > 0) {
-                const randomIndex: number = Math.floor(Math.random() * answer.length)
-                answers.push({ id: answer[randomIndex].id, input: obj.query_question, qestion: obj.sentence_question[0].question.text, answer: answer[randomIndex].answer, crdate: new Date(answer[randomIndex].crdate) });
+
+    for (const match of data) {
+        if (match.sentenceQuestion.length > 0) {
+            const selectedAnswer = await findAnswerForMatch(match);
+
+            if (selectedAnswer !== undefined) {
+                answers.push(selectedAnswer);
             }
-        } else {
-            if (obj.query_question.length > 0) {
-                const unknown_add = await Add_Unknown(obj.query_question)
-                if (unknown_add) {
-                    educationQuestions.push(unknown_add.text);
-                    try {
-                        await vk.api.messages.send({
-                            peer_id: Number(root),
-                            random_id: 0,
-                            message: `Я не знаю что ответить на эту фразу:\n\n${Input_Message_Cleaner(unknown_add.text)}`
-                        })
-                    } catch (e) {
-                        logWithContext(context, `Ошибка уведомления о сохранении вопроса ${e}`)
-                    }
-                }
-            }
+
+            continue;
         }
+
+        await addEducationQuestion(match.queryQuestion, educationQuestions, context, vk);
     }
+
     if (answers.length > 0) {
-        res.answer =  answers.length == 1 ? answers.map(answer => `${answer.answer}\n\n`).join('') : answers.map(answer => `${Input_Message_Cleaner(answer.input)}: \n${answer.answer}\n\n`).join('')
-        res.info = formatLogSections(formatSearchTitle("MultiBoost~", true), [
-            [
-                { label: "Сгенерирован ответ", value: answers.map(answer => `${answer.id} <-- ${answer.answer}`).join('; ') },
-                { label: "Исправление ошибок", value: answers.map(answer => `${answer.id} --> ${answer.qestion}`).join('; ') },
-                { label: `Найдено вариантов: [${answers.length}], затрачено времени`, value: `${(Date.now() - data_old) / 1000} сек.` },
-            ],
-        ], 'FINISH')
-        res.status = true
-    } else {
-        const fields: LogField[] = [
-            { label: "Новых вопросов", value: educationQuestions.length },
-            { label: "Затрачено времени", value: `${(Date.now() - data_old) / 1000} сек.` },
-        ];
-
-        if (educationQuestions.length > 0) {
-            fields.push({ label: "Вопросы обучения", value: educationQuestions.join('; ') });
-        }
-
-        res.info = formatLogSections(
-            formatSearchTitle("MultiBoost~", false),
-            [fields],
-            educationQuestions.length > 0 ? 'EDUCATION' : 'NOT_FOUND',
-        );
+        res.answer = formatAnswerText(answers);
+        res.info = formatSuccessLog(answers, data_old);
+        res.status = true;
+        return res;
     }
-    return res
+
+    res.info = formatNotFoundLog(educationQuestions, data_old);
+    return res;
 }
 
+async function findAnswerForMatch(match: QuestionMatch): Promise<SelectedAnswer | undefined> {
+    for (const sentenceQuestion of match.sentenceQuestion) {
+        const answers = await prisma.answer.findMany({
+            where: { id_question: sentenceQuestion.question.id },
+            take: 100,
+        });
+        const randomAnswer = pickRandomAnswer(answers);
+
+        if (randomAnswer !== undefined) {
+            return {
+                id: randomAnswer.id,
+                input: match.queryQuestion,
+                question: sentenceQuestion.question.text,
+                answer: randomAnswer.answer,
+                crdate: new Date(randomAnswer.crdate),
+            };
+        }
+    }
+
+    return undefined;
+}
+
+function pickRandomAnswer(answers: readonly Answer[]): Answer | undefined {
+    if (answers.length === 0) {
+        return undefined;
+    }
+
+    return answers[Math.floor(Math.random() * answers.length)];
+}
+
+async function addEducationQuestion(
+    queryQuestion: string,
+    educationQuestions: string[],
+    context: Context | any,
+    vk: VK,
+): Promise<void> {
+    if (queryQuestion.length === 0) {
+        return;
+    }
+
+    const unknownQuestion = await Add_Unknown(queryQuestion);
+
+    if (!unknownQuestion) {
+        return;
+    }
+
+    educationQuestions.push(unknownQuestion.text);
+
+    try {
+        await vk.api.messages.send({
+            peer_id: Number(root),
+            random_id: 0,
+            message: `Я не знаю что ответить на эту фразу:\n\n${Input_Message_Cleaner(unknownQuestion.text)}`,
+        });
+    } catch (error) {
+        logWithContext(context, `Ошибка уведомления о сохранении вопроса ${error}`);
+    }
+}
+
+function formatAnswerText(answers: readonly SelectedAnswer[]): string {
+    if (answers.length === 1) {
+        return answers.map(answer => `${answer.answer}\n\n`).join("");
+    }
+
+    return answers
+        .map(answer => `${Input_Message_Cleaner(answer.input)}: \n${answer.answer}\n\n`)
+        .join("");
+}
+
+function formatSuccessLog(answers: readonly SelectedAnswer[], startedAt: number): string {
+    return formatLogSections(formatSearchTitle("MultiBoost~", true), [
+        [
+            { label: "Сгенерирован ответ", value: answers.map(answer => `${answer.id} <-- ${answer.answer}`).join("; ") },
+            { label: "Исправление ошибок", value: answers.map(answer => `${answer.id} --> ${answer.question}`).join("; ") },
+            { label: `Найдено вариантов: [${answers.length}], затрачено времени`, value: `${(Date.now() - startedAt) / 1000} сек.` },
+        ],
+    ], "FINISH");
+}
+
+function formatNotFoundLog(educationQuestions: readonly string[], startedAt: number): string {
+    const fields: LogField[] = [
+        { label: "Новых вопросов", value: educationQuestions.length },
+        { label: "Затрачено времени", value: `${(Date.now() - startedAt) / 1000} сек.` },
+    ];
+
+    if (educationQuestions.length > 0) {
+        fields.push({ label: "Вопросы обучения", value: educationQuestions.join("; ") });
+    }
+
+    return formatLogSections(
+        formatSearchTitle("MultiBoost~", false),
+        [fields],
+        educationQuestions.length > 0 ? "EDUCATION" : "NOT_FOUND",
+    );
+}
 
 export default Reseacher_New_Format;

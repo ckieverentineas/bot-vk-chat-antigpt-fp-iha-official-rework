@@ -4,3 +4,4 @@ src/temp
 build
 prisma/dev.db
 .env
+prisma/bigdev.db

@@ -1,6 +1,6 @@
 {
   "name": "bot",
-  "version": "1.0.0",
+  "version": "0.1.24",
   "description": "cap",
   "engines": {
     "node": "16.x"

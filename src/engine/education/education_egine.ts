@@ -2,6 +2,7 @@ import { Unknown } from "@prisma/client";
 import prisma from "../../module/prisma";
 import { compareTwoStrings } from 'string-similarity';
 import { Context, Keyboard } from "vk-io";
+import { clearTextSearchCache } from "../reseacher/text_search";
 
 export async function Add_Unknown(text: string): Promise<Unknown | false> {
     const batchSize = 100000;
@@ -132,6 +133,7 @@ async function Education_Answer(context: Context, res: Education_Structure): Pro
                     await prisma.answer.create({ data: { answer: answer, crdate: new Date(), id_question: question.id } });
                 }
             }
+            clearTextSearchCache("questions");
             const skip: Unknown = await prisma.unknown.update({ where: { id: res.id }, data: { checked: true } });
             if (skip) {await context.send(`Ответы добавлены для неизвестного вопроса: ${skip.text}`)}
             res.working = false

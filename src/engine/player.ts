@@ -11,6 +11,7 @@ import { Education_Engine } from "./education/education_egine";
 import { Editor_Engine } from "./editor/editor_engine";
 import { Editor_Engine_BlackList } from "./prefab/blacklist_editor";
 import { getContextLogger, logWithContext } from "../module/logger";
+import { PROJECT_VERSION_LABEL } from "../module/project_version";
 
 export function registerUserRoutes(hearManager: HearManager<IQuestionMessageContext>): void {
     hearManager.hear(/!база/, async (context) => {
@@ -24,7 +25,7 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
             const count_question = await prisma.question.count({})
             const count_answer = await prisma.answer.count({})
             const count_blacklist = await prisma.blackList.count({})
-            await context.send(`Панель администратора: \n 🔸 Версия: 0.1.06 Pre-Alpha Building \n 👤 Личные сообщения: Разрешены \n 👥 Беседы: Разрешены \n\n ⚙ Защиты: 🛡Антиспам \n 🛡"Я не повторяюсь" \n 🛡"Ты повторяешься" \n 🛡"Молчать, когда два бота вместе" \n 🛡"Упомянули не меня" \n 🛡"Ответили не мне" \n 🛡"Имунитет от любителей писать одно слово в сообщении" \n 📚 Количество вопросов ${count_question} и ответов к ним: ${count_answer} \n ☠ Количество стоп-слов в blacklist ${count_blacklist} \n\n 📝 Поисковые движки: \n 🔍 DirectBoost - ищет ответы 1 к 1; \n 🔍 MultiBoost - ищет для кучи предложений нечетко.`)
+            await context.send(`Панель администратора: \n 🔸 Версия: ${PROJECT_VERSION_LABEL} \n 👤 Личные сообщения: Разрешены \n 👥 Беседы: Разрешены \n\n ⚙ Защиты: 🛡Антиспам \n 🛡"Я не повторяюсь" \n 🛡"Ты повторяешься" \n 🛡"Молчать, когда два бота вместе" \n 🛡"Упомянули не меня" \n 🛡"Ответили не мне" \n 🛡"Имунитет от любителей писать одно слово в сообщении" \n 📚 Количество вопросов ${count_question} и ответов к ним: ${count_answer} \n ☠ Количество стоп-слов в blacklist ${count_blacklist} \n\n 📝 Поисковые движки: \n 🔍 DirectBoost - ищет ответы 1 к 1; \n 🔍 MultiBoost - ищет для кучи предложений нечетко.`)
         }
     })
     hearManager.hear(/!помощь/, async (context) => {
@@ -120,7 +121,7 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
             const user: User | null = await prisma.user.findFirst({ where: { idvk: context.senderId } })
             const info: any = await User_Info(context)
             if (user) {
-                await context.send(` 👤 Имя: @id${user.idvk}(${info.first_name}): \n\n 💳 Порядковый номер: ${user.id} \n 🎥 Кремлевский номер: ${user.idvk} \n ⚠ Получено предупреждений: ${user.warning}/3 \n ⚰ Дата резервации: ${user.crdate} \n ⛓ Статус: ${user.ignore ? 'В стоп-листе' : 'Законопослушны'} \n 🔸 Находитесь в капсуле: 0.1.06 Pre-Alpha Building \n `)
+                await context.send(` 👤 Имя: @id${user.idvk}(${info.first_name}): \n\n 💳 Порядковый номер: ${user.id} \n 🎥 Кремлевский номер: ${user.idvk} \n ⚠ Получено предупреждений: ${user.warning}/3 \n ⚰ Дата резервации: ${user.crdate} \n ⛓ Статус: ${user.ignore ? 'В стоп-листе' : 'Законопослушны'} \n 🔸 Находитесь в капсуле: ${PROJECT_VERSION_LABEL} \n `)
             }
         }
     })

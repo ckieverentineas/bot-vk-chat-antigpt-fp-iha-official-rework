@@ -15,10 +15,20 @@ import { Replacer_System_Params } from './engine/reseacher/specializator';
 import { User_Info } from './engine/helper';
 import { Answer_Offline } from './engine/offline_answer';
 import { parseVkEntitiesEnv, VkEntity, VkEntityType } from './module/vk_entities_env';
-import { createLogger, formatIncomingMessageLog, logWithContext, setContextLogger } from './module/logger';
+import { createLogger, formatIncomingMessageLog, formatLogSections, logWithContext, setContextLogger } from './module/logger';
+import { getSearchModeLabel, getSearchSettings } from './module/search_config';
 dotenv.config();
 
 const systemLogger = createLogger('vk-chat-bot');
+const searchSettings = getSearchSettings();
+
+systemLogger(formatLogSections('{SEARCH_MODE}', [
+	[
+		{ label: 'Режим поиска', value: getSearchModeLabel(searchSettings.mode) },
+		{ label: 'Размер пачки', value: searchSettings.batchSize },
+		{ label: 'Лимит вариантов', value: searchSettings.topLimit },
+	],
+], 'READY'));
 
 
 export const root: number = Number(process.env.root) //root user
@@ -26,6 +36,9 @@ export const root: number = Number(process.env.root) //root user
 //инициализация
 const questionManager = new QuestionManager();
 const hearManager = new HearManager<IQuestionMessageContext>();
+InitGameRoutes(hearManager)
+registerUserRoutes(hearManager)
+registerCommandRoutes(hearManager)
 
 export const tokenizer = new natural.AggressiveTokenizerRu()
 export const tokenizer_sentence = new natural.SentenceTokenizer()
@@ -179,10 +192,6 @@ Promise.all(vkEntities.map(async entity => {
 		});
 		vk.updates.use(questionManager.middleware);
 		vk.updates.on('message_new', hearManager.middleware);
-		//регистрация роутов из других классов
-		InitGameRoutes(hearManager)
-		registerUserRoutes(hearManager)
-		registerCommandRoutes(hearManager)
 		//миддлевар для предварительной обработки сообщений
 		vk.updates.on('message_new', async (context: Context, next) => {
 			const incomingMessage = context.text;

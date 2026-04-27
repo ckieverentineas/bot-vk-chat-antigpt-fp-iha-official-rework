@@ -3,6 +3,7 @@ import prisma from "../../module/prisma";
 import { compareTwoStrings } from 'string-similarity';
 import { Context, Keyboard } from "vk-io";
 import Black_List_Engine from "./blacklist";
+import { clearTextSearchCache } from "../reseacher/text_search";
 
 async function Save_Black_Word(text: string): Promise<BlackList | false> {
     const unknownQuestions: BlackList[] = await prisma.blackList.findMany({})
@@ -61,6 +62,7 @@ async function Create_BlackList(context: Context, res: { working: boolean }): Pr
         if (corrected.text == '!сохранить') {
             // Проверяем, есть ли ответ уже в базе данных
             const save = await prisma.blackList.create({ data: { text: word } })
+            clearTextSearchCache("black-list");
             if (save) {
                 await context.send(`Успешно добавлено стоп-слово ID${save.id}:\n[${save.text}]`)
             }
@@ -143,6 +145,7 @@ async function Select_BlackList(context: Context, res: { working: boolean }): Pr
                 let save_pass = await prisma.blackList.findFirst({ where: { id: question.id } });
                 if (save_pass) {
                     const save = await prisma.blackList.update({ where: { id: question.id }, data: { text: question.text_edit } })
+                    clearTextSearchCache("black-list");
                     question.text = save.text
                     question.text_edit = save.text
                     await context.send(`Успешно изменено стоп-слово ID${save_pass.id}:\n[${save_pass.text}] --> [${save.text}]`)
@@ -176,6 +179,7 @@ async function Select_BlackList(context: Context, res: { working: boolean }): Pr
                 if (save_pass) {
                     
                     const save = await prisma.blackList.delete({ where: { id: question.id } })
+                    clearTextSearchCache("black-list");
                     await context.send(`Успешно удаленj стоп-слово ID${save_pass.id}:\n[${save.text}]\n`)
                 }
                 res.working = false

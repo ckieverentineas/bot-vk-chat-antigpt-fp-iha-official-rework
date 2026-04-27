@@ -2,6 +2,7 @@ import { Answer, Unknown } from "@prisma/client";
 import prisma from "../../module/prisma";
 import { compareTwoStrings } from 'string-similarity';
 import { Context, Keyboard } from "vk-io";
+import { clearTextSearchCache } from "../reseacher/text_search";
 
 async function Save_Answer(text: string, id_question: number): Promise<Answer | false> {
     const unknownQuestions: Answer[] = await prisma.answer.findMany({ where: { id_question: id_question } })
@@ -116,6 +117,7 @@ async function Select_Answer(context: Context, res: { working: boolean }): Promi
                 let save_pass = await prisma.answer.findFirst({ where: { id: question.id } });
                 if (save_pass) {
                     const save = await prisma.answer.update({ where: { id: question.id }, data: { answer: question.text_edit } })
+                    clearTextSearchCache("questions");
                     question.text = save.answer
                     question.text_edit = save.answer
                     await context.send(`Для вопроса ID${question.id_question} ${question.text_question} успешно изменен ответ ID${save_pass.id}:\n[${save_pass.answer}] --> [${save.answer}]`)
@@ -148,6 +150,7 @@ async function Select_Answer(context: Context, res: { working: boolean }): Promi
                 let save_pass = await prisma.answer.findFirst({ where: { id: question.id } });
                 if (save_pass) {
                     const save = await prisma.answer.delete({ where: { id: question.id } })
+                    clearTextSearchCache("questions");
                     await context.send(`Для вопроса ID${question.id_question} ${question.text_question} успешно удален ответ ID${save_pass.id}:\n[${save.answer}]`)
                 }
                 res.working = false
@@ -225,6 +228,7 @@ async function Select_Question(context: Context, res: { working: boolean }): Pro
                 let save_pass = await prisma.question.findFirst({ where: { id: question.id } });
                 if (save_pass) {
                     const save = await prisma.question.update({ where: { id: question.id }, data: { text: question.text_edit } })
+                    clearTextSearchCache("questions");
                     question.text = save.text
                     question.text_edit = save.text
                     await context.send(`Успешно изменен вопрос ID${save_pass.id}:\n[${save_pass.text}] --> [${save.text}]`)
@@ -259,6 +263,7 @@ async function Select_Question(context: Context, res: { working: boolean }): Pro
                 if (save_pass) {
                     
                     const save = await prisma.question.delete({ where: { id: question.id } })
+                    clearTextSearchCache("questions");
                     await context.send(`Успешно удален вопрос ID${save_pass.id}:\n[${save.text}]\n\n Также удалено следующее количество ответов к нему: ${question_counter}`)
                 }
                 res.working = false

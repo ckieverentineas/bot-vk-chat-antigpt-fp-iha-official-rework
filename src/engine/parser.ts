@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { MessageContext } from 'vk-io';
 import { createLogger, getContextLogger, Logger } from '../module/logger';
+import { clearTextSearchCache } from './reseacher/text_search';
 
 //крч эта функция делает дамп данных в Txt из бд
 export async function exportQuestionsAndAnswers(logger: Logger = createLogger('vk-chat-bot')): Promise<void> {
@@ -165,6 +166,7 @@ async function parseDirectory(directoryPath: string, context: MessageContext): P
   }
 
   // Логируем общее количество вопросов и ответов
+  clearTextSearchCache("questions");
   await context.send(`Parsed ${totalQuestions} files with ${totalAnswers} total answers`)
   logger(`Parsed ${totalQuestions} files with ${totalAnswers} total answers`);
 }
