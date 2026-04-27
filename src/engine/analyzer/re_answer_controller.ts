@@ -1,12 +1,13 @@
 import { Context } from "vk-io";
 import { vks_info } from "../..";
+import { logWithContext } from "../../module/logger";
 
 export async function Re_Answer_controller(context: Context): Promise<boolean> {
     const ids = vks_info.map((info) => info.idvk);
     try {
         await context.loadMessagePayload();
     } catch (e) {
-        console.log(`ВК послал нас нафиг, так и не подгрузив данные о сообщениях: ${e}`)
+        logWithContext(context, `ВК послал нас нафиг, так и не подгрузив данные о сообщениях: ${e}`)
     }
     if (context.replyMessage || (context.forwards && context.forwards.length > 1)) {
         //console.log(`Ответ на сообщение бота. Идентификатор диалога: ${context.replyMessage.peerId}`);

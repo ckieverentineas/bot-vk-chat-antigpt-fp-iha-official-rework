@@ -7,6 +7,7 @@ import { compareTwoStrings } from 'string-similarity';
 import { BlackList, Question } from "@prisma/client";
 import { Context, MessageContext, VK } from "vk-io";
 import { Add_Unknown } from "../education/education_egine";
+import { formatLogFields, logWithContext } from "../../module/logger";
 
 // Функция для токенизации текста
 async function tokenizeText(text: string): Promise<string[]> {
@@ -86,7 +87,12 @@ async function Black_List_Engine(res: { text: string, answer: string, info: stri
     if (output[0]?.sentence_question?.length > 0) {
         res.status = true
         await context.send(`Обнаружено стоп-слово ${JSON.stringify(output[0]?.sentence_question[0]?.question)}, отвечать не буду`)
-        console.log(` Проверяем сообщение: [${res.text}] \n Найденно стоп-слово: [${output[0]?.sentence_question[0]?.question?.text}] \n Очки: score [${output[0]?.sentence_question[0]?.score}] \nОстанавливаем ответ: [подтверждено] \n\n`)
+        logWithContext(context, formatLogFields([
+            { label: "Проверяем сообщение", value: res.text },
+            { label: "Найдено стоп-слово", value: output[0]?.sentence_question[0]?.question?.text },
+            { label: "Очки", value: output[0]?.sentence_question[0]?.score },
+            { label: "Останавливаем ответ", value: "подтверждено" },
+        ]))
     }
     //console.log(JSON.stringify(output, null, 2));
     return res

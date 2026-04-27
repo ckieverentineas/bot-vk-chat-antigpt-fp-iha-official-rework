@@ -4,8 +4,9 @@ import { Sleep } from "./helper";
 import { Direct_Search } from "./reseacher/reseach_direct_boost";
 import Reseacher_New_Format from "./reseacher/reseacher_new_format";
 import { VK } from "vk-io";
+import { Logger } from "../module/logger";
 
-async function Send_Message_Safely(vk: VK, peerId: number, message: string): Promise<boolean> {
+async function Send_Message_Safely(vk: VK, peerId: number, message: string, logger: Logger): Promise<boolean> {
     try {
         await vk.api.messages.send({
             peer_id: peerId,
@@ -14,13 +15,13 @@ async function Send_Message_Safely(vk: VK, peerId: number, message: string): Pro
         });
         return true;
     } catch (error) {
-        console.log(`Не удалось отправить сообщение peer_id ${peerId}: ${error}`);
+        logger(`Не удалось отправить сообщение peer_id ${peerId}: ${error}`);
         return false;
     }
 }
 
-export async function Answer_Offline(vk: VK): Promise<void> {
-    await Send_Message_Safely(vk, root, `Приступаем к считыванию оффлайн сообщений!`);
+export async function Answer_Offline(vk: VK, logger: Logger): Promise<void> {
+    await Send_Message_Safely(vk, root, `Приступаем к считыванию оффлайн сообщений!`, logger);
 
     let messages;
     try {
@@ -28,7 +29,7 @@ export async function Answer_Offline(vk: VK): Promise<void> {
             filter: 'unread'
         });
     } catch (error) {
-        console.log(`Не удалось получить оффлайн сообщения: ${error}`);
+        logger(`Не удалось получить оффлайн сообщения: ${error}`);
         return;
     }
     
@@ -47,28 +48,32 @@ export async function Answer_Offline(vk: VK): Promise<void> {
             }
             if (typeof context.text != 'string' || (typeof context.text == 'string' && context.text.length < 3) ) { continue }
             //модуль поиска с прямым вхождением 1 к 1-му
-	        const dataOld = Date.now();
+            const dataOld = Date.now();
             let res: { text: string; answer: string; info: string; status: boolean; } = { text: context.text, answer: '', info: '', status: false }
 	        res = await Direct_Search(res, dataOld)
-	        console.log(`DirectBoost Offline ${res.status ? "{X}" : "{V}"} ${context.senderId} --> ${context.text} <-- ${res.status ? "{Success}" : "{NotFound}"}`)
-	        res = !res.status ? await Reseacher_New_Format(res, context, dataOld, vk) : res
-	        console.log(`MultiBoost~ Offline ${res.status ? "{X}" : "{V}"} ${context.senderId} --> ${context.text} <-- ${res.status ? "{Success}" : "{NotFound}"}`)
+	        if (!res.status) {
+                res = await Reseacher_New_Format(res, context, dataOld, vk)
+            }
             //ищем самый оптимальный вариант ответа на сообщение пользователя
 			
-			if (!res.status) { console.log(res.info); continue; }
+			if (!res.status) {
+                if (res.info) { logger(res.info); }
+                continue;
+            }
 			try {
 				//отправляем оптимальный ответ пользователю
                 // Отправляем ответное сообщение
                 const answerWasSent = await Send_Message_Safely(
                     vk,
                     peerId,
-                    `Привет я снова в сети, ты пишешь: ${Input_Message_Cleaner(message.last_message.text)}, мой ответ: ${res.answer}`
+                    `Привет я снова в сети, ты пишешь: ${Input_Message_Cleaner(message.last_message.text)}, мой ответ: ${res.answer}`,
+                    logger
                 );
-				if (answerWasSent) { console.log(res.info); }
+				if (answerWasSent) { logger(res.info); }
 			} catch (e) {
-				console.log(`Проблема отправки сообщения в чат: ${e}`);
+				logger(`Проблема отправки сообщения в чат: ${e}`);
 			}
         }
     }
-    await Send_Message_Safely(vk, root, `Закончили считывать оффлайн сообщений!`);
+    await Send_Message_Safely(vk, root, `Закончили считывать оффлайн сообщений!`, logger);
 }

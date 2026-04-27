@@ -7,8 +7,9 @@ export async function Answer_Core_Edition(res: { text: string, answer: string, i
 	const dataOld = Date.now();
 	if (typeof context.text != 'string') { return res }
 	res = await Direct_Search(res, dataOld)
-	console.log(`DirectBoost ${res.status ? "{X}" : "{V}"} ${context.senderId} --> ${context.text} <-- ${res.status ? "{Success}" : "{NotFound}"}`)
-	res = !res.status ? await Reseacher_New_Format(res, context, dataOld, vk) : res
-	console.log(`MultiBoost~  ${res.status ? "{X}" : "{V}"} ${context.senderId} --> ${context.text} <-- ${res.status ? "{Success}" : "{NotFound}"}`)
+	if (res.status) {
+		return res
+	}
+	res = await Reseacher_New_Format(res, context, dataOld, vk)
     return res
 }

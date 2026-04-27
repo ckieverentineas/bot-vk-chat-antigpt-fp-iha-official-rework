@@ -153,7 +153,3 @@ function Translit_Cyrillic_To_Latin(word: string) {
     }
     return res
 }
-const data = Translit_Cyrillic_To_Latin("did they come to be? Who invented1 them? This is actually a very tough question. The first cartoons were created long before the TV. For example, shadow play2 was a very popular form of entertainment3 in ancient China. Such shows looked almost like modервые мультфильмы были созданы задолго до ТВ. Например, театр теней был очень популярной формой развлечения в древнем Китае. Такие шоу выглядели почти как современные мультфильмы! В конце XIX века была создана игрушка, которая называлась кинеограф. Это была маленькая мягкая книжка с картинками. Когда вы сгибали эту книжку и отпускали страницы одну за другой, картинки начинали шевелиться. Говоря строго, не начинали, но наши глаза всё равно воспринимают это именно так. Первые настоящие мультфильмы были также сделаны при помощи этого трюка");
-console.log(`ТРанслит ${data}`);
-const data2 = Translit_Latin_To_Cyrillic(`${data}`)
-console.log(`Реверсет ${data2}`)

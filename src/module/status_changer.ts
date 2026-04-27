@@ -1,26 +1,29 @@
 import { vks, vks_info } from "..";
+import { createLogger } from "./logger";
 
 export async function updateStatuses() {
     for (let i = 0; i < vks.length; i++) {
         const vk = vks[i];
         const info = vks_info[i];
+        const logger = createLogger(info.name);
+
         try {
             if (info.type === 'page') {
                 await vk.api.status.set({
                     text: `${await TimeUntilNewYear()}`
                 });
-                console.log(`Статус ${info.type} с ID ${info.idvk} изменен`);
+                logger(`Статус ${info.type} с ID ${info.idvk} изменен`);
             } else if (info.type === 'group') {
                 /*
                 await vk.api.status.set({
                     group_id: info.idvk,
                     status: `${await TimeUntilNewYear()}`
                 });
-                console.log(`Статус группы с ID ${info.idvk} изменен`);
+                logger(`Статус группы с ID ${info.idvk} изменен`);
                 */
             }
         } catch (error) {
-            console.error(`Ошибка при изменении статуса с ID ${info.idvk} и типом сущности ${info.type}:`, error);
+            logger(`Ошибка при изменении статуса с ID ${info.idvk} и типом сущности ${info.type}: ${error}`);
         }
     }
 }

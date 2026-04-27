@@ -13,8 +13,6 @@ export function InitGameRoutes(hearManager: HearManager<IQuestionMessageContext>
 				name: 'admin'
 			}
 		})
-		console.log(`Init roles for users`)
-
 		context.send('Игра инициализированна успешно.')
 	})*/
 }

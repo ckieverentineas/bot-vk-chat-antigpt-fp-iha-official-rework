@@ -3,9 +3,10 @@ import prisma from '../module/prisma';
 import * as path from 'path';
 import * as readline from 'readline';
 import { MessageContext } from 'vk-io';
+import { createLogger, getContextLogger, Logger } from '../module/logger';
 
 //крч эта функция делает дамп данных в Txt из бд
-export async function exportQuestionsAndAnswers() {
+export async function exportQuestionsAndAnswers(logger: Logger = createLogger('vk-chat-bot')): Promise<void> {
   // Открываем файл для записи
   const fileStream = fs.createWriteStream('questions_and_answers.txt');
 
@@ -51,9 +52,9 @@ export async function exportQuestionsAndAnswers() {
   fileStream.end();
 
   const total = questionCount + answerCount;
-  console.log(`Вопросов: ${questionCount}, ответов: ${answerCount}, общее количество записей: ${total}`);
+  logger(`Вопросов: ${questionCount}, ответов: ${answerCount}, общее количество записей: ${total}`);
 
-  console.log('Вопросы и ответы успешно экспортированы в файл!');
+  logger('Вопросы и ответы успешно экспортированы в файл!');
 }
 
 
@@ -67,7 +68,7 @@ interface QuestionAnswer {
 }
 
 // Функция для обработки одного файла
-async function parseFile(filePath: string): Promise<void> {
+async function parseFile(filePath: string, logger: Logger): Promise<void> {
   // Создаем поток чтения из файла
   const fileStream = fs.createReadStream(filePath, { encoding: 'utf-8' });
   // Создаем интерфейс для чтения файла построчно
@@ -91,7 +92,7 @@ async function parseFile(filePath: string): Promise<void> {
       const question = await saveQuestion(currentQuestion);
       await saveAnswers(question.id, currentAnswers);
       // Логируем сохранение вопроса и ответов
-      console.log(`Saved question "${currentQuestion}" with ${currentAnswers.length} answers`);
+      logger(`Saved question "${currentQuestion}" with ${currentAnswers.length} answers`);
       // Сбрасываем переменные для следующего вопроса
       currentQuestion = null;
       currentAnswers = [];
@@ -106,7 +107,7 @@ async function parseFile(filePath: string): Promise<void> {
     const question = await saveQuestion(currentQuestion);
     await saveAnswers(question.id, currentAnswers);
     // Логируем сохранение вопроса и ответов
-    console.log(`Saved question "${currentQuestion}" with ${currentAnswers.length} answers`);
+    logger(`Saved question "${currentQuestion}" with ${currentAnswers.length} answers`);
   }
 }
 
@@ -149,13 +150,14 @@ async function saveAnswers(questionId: number, answers: string[]) {
 async function parseDirectory(directoryPath: string, context: MessageContext): Promise<void> {
   let totalQuestions = 0;
   let totalAnswers = 0;
+  const logger = getContextLogger(context);
 
   const directory = await fs.promises.opendir(directoryPath);
   for await (const dirent of directory) {
     if (dirent.isFile() && path.extname(dirent.name) === '.txt') {
       // Если файл имеет расширение .txt, обрабатываем его
       const filePath = path.join(directoryPath, dirent.name);
-      await parseFile(filePath);
+      await parseFile(filePath, logger);
       // Увеличиваем счетчики общего количества вопросов и ответов
       totalQuestions++;
       totalAnswers += await countAnswers(filePath);
@@ -164,7 +166,7 @@ async function parseDirectory(directoryPath: string, context: MessageContext): P
 
   // Логируем общее количество вопросов и ответов
   await context.send(`Parsed ${totalQuestions} files with ${totalAnswers} total answers`)
-  console.log(`Parsed ${totalQuestions} files with ${totalAnswers} total answers`);
+  logger(`Parsed ${totalQuestions} files with ${totalAnswers} total answers`);
 }
 
 // Функция для подсчета количества ответов в файле

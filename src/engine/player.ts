@@ -10,6 +10,7 @@ import { Save_Answers_and_Question_In_DB, exportQuestionsAndAnswers } from "./pa
 import { Education_Engine } from "./education/education_egine";
 import { Editor_Engine } from "./editor/editor_engine";
 import { Editor_Engine_BlackList } from "./prefab/blacklist_editor";
+import { getContextLogger, logWithContext } from "../module/logger";
 
 export function registerUserRoutes(hearManager: HearManager<IQuestionMessageContext>): void {
     hearManager.hear(/!база/, async (context) => {
@@ -54,10 +55,10 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
                 if (user) {
                     const login = await prisma.user.update({ where: { idvk: target }, data: { ignore: user.ignore ? false : true } })
                     await context.send(`@id${login.idvk}(Пользователь) ${login.ignore ? 'добавлен в лист игнора' : 'убран из листа игнора'}`)
-                    console.log(`@id${login.idvk}(Пользователь) ${login.ignore ? 'добавлен в лист игнора' : 'убран из листа игнора'}`)
+                    logWithContext(context, `@id${login.idvk}(Пользователь) ${login.ignore ? 'добавлен в лист игнора' : 'убран из листа игнора'}`)
                 } else {
                     await context.send(`@id${target}(Пользователья) не существует`)
-                    console.log(`@id${target}(Пользователья) не существует`)
+                    logWithContext(context, `@id${target}(Пользователья) не существует`)
                 }
             }
         }
@@ -73,10 +74,10 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
                         data: { ignore: user.ignore ? false : true } // Переключаем статус на игнор
                     });
                     await context.send(`@id${login.idvk}(Юзер) ${login.ignore ? 'ты меня обидел, теперь не буду отвечать тебе' : 'я тебя прощаю, давай общаться)'}`);
-                    console.log(`@id${login.idvk}(Пользователь) ${login.ignore ? 'добавлен в лист игнора' : 'убран из листа игнора'}`);
+                    logWithContext(context, `@id${login.idvk}(Пользователь) ${login.ignore ? 'добавлен в лист игнора' : 'убран из листа игнора'}`);
                 } else {
                     await context.send(`@id${target}(Пользователья) не существует`);
-                    console.log(`@id${target}(Пользователья) не существует`);
+                    logWithContext(context, `@id${target}(Пользователья) не существует`);
                 }
             }
         }
@@ -90,10 +91,10 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
                 if (user) {
                     const login = await prisma.user.update({ where: { idvk: target }, data: { root: user.root ? false : true } })
                     await context.send(`@id${login.idvk}(Пользователь) ${login.root ? 'добавлен в лист администраторов' : 'убран из листа администраторов'}`)
-                    console.log(`@id${login.idvk}(Пользователь) ${login.root ? 'добавлен в лист администраторов' : 'убран из листа администраторов'}`)
+                    logWithContext(context, `@id${login.idvk}(Пользователь) ${login.root ? 'добавлен в лист администраторов' : 'убран из листа администраторов'}`)
                 } else {
                     await context.send(`@id${target}(Пользователья) не существует`)
-                    console.log(`@id${target}(Пользователья) не существует`)
+                    logWithContext(context, `@id${target}(Пользователья) не существует`)
                 }
             }
         }
@@ -104,12 +105,12 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
             if (user && user.length >= 1) {
                 for (const i in user) {
                     const login = await prisma.user.delete({ where: { id: user[i].id } })
-                    console.log(`@id${login.idvk}(Пользователь) был удален`)
+                    logWithContext(context, `@id${login.idvk}(Пользователь) был удален`)
                 }
                 await context.send(`⚙ Внимание, было удалено пользователей ${user.length}`)
             } else {
                 await context.send(`⚙ Обидно, но некого удалить... Увы`)
-                console.log(`Пользователей не обнаружено`)
+                logWithContext(context, `Пользователей не обнаружено`)
             }
         }
     })
@@ -127,8 +128,8 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
         if (!context.isOutbox && context.senderId === root && context?.text !== undefined) {
             try {
                 await context.send('Вы запустили процесс слива базы данных в текстовый файл. Пожалуйста, подождите...');
-                console.log('Запуск процесса слива базы данных...');
-                await exportQuestionsAndAnswers();
+                logWithContext(context, 'Запуск процесса слива базы данных...');
+                await exportQuestionsAndAnswers(getContextLogger(context));
                 await context.send('Процесс завершён. Загружаю файл...');
                 const filePath = path.resolve('questions_and_answers.txt'); // Абсолютный путь к файлу
                 await context.sendDocuments({
@@ -136,9 +137,9 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
                     filename: 'questions_and_answers.txt',
                 });
     
-                console.log('Файл успешно отправлен пользователю.');
+                logWithContext(context, 'Файл успешно отправлен пользователю.');
             } catch (error) {
-                console.error('Ошибка при выполнении команды !дамп:', error);
+                logWithContext(context, `Ошибка при выполнении команды !дамп: ${error}`);
                 await context.send('Произошла ошибка при выполнении команды. Попробуйте снова позже.');
             }
         }

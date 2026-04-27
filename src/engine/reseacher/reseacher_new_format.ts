@@ -8,6 +8,7 @@ import { Question } from "@prisma/client";
 import { Context, MessageContext, VK } from "vk-io";
 import { Add_Unknown } from "../education/education_egine";
 import { Input_Message_Cleaner } from "../clear_input";
+import { formatLogSections, formatSearchTitle, LogField, logWithContext } from "../../module/logger";
 
 // Функция для токенизации текста
 async function tokenizeText(text: string): Promise<string[]> {
@@ -77,14 +78,15 @@ async function Reseacher_New_Format(res: { text: string, answer: string, info: s
         ...match,
         sentence_question: match.sentence_question.sort((a, b) => b.score - a.score),
     }));
-    res = await processInputData(res, output, data_old, vk)
+    res = await processInputData(res, output, context, data_old, vk)
     //console.log(JSON.stringify(output, null, 2));
     return res
 }
 
 // Определяем функцию для обработки входных данных
-async function processInputData(res: { text: string, answer: string, info: string, status: boolean }, data: Match[], data_old: number, vk: VK) {
+async function processInputData(res: { text: string, answer: string, info: string, status: boolean }, data: Match[], context: Context | any, data_old: number, vk: VK) {
     const answers = []
+    const educationQuestions: string[] = [];
     for (const obj of data) {
         if (obj.sentence_question.length > 0) {
             const answer = await prisma.answer.findMany({
@@ -99,15 +101,15 @@ async function processInputData(res: { text: string, answer: string, info: strin
             if (obj.query_question.length > 0) {
                 const unknown_add = await Add_Unknown(obj.query_question)
                 if (unknown_add) {
+                    educationQuestions.push(unknown_add.text);
                     try {
                         await vk.api.messages.send({
                             peer_id: Number(root),
                             random_id: 0,
                             message: `Я не знаю что ответить на эту фразу:\n\n${Input_Message_Cleaner(unknown_add.text)}`
                         })
-                        console.log(`Новый вопрос для обучения:\n\n${unknown_add.text}`)
                     } catch (e) {
-                        console.log(`Ошибка уведомления о сохранении вопроса ${e}`)
+                        logWithContext(context, `Ошибка уведомления о сохранении вопроса ${e}`)
                     }
                 }
             }
@@ -115,8 +117,29 @@ async function processInputData(res: { text: string, answer: string, info: strin
     }
     if (answers.length > 0) {
         res.answer =  answers.length == 1 ? answers.map(answer => `${answer.answer}\n\n`).join('') : answers.map(answer => `${Input_Message_Cleaner(answer.input)}: \n${answer.answer}\n\n`).join('')
-        res.info = ` Получено сообщение: [${res.text}] \n Исправление ошибок: [${answers.map(answer => `${answer.id} --> ${answer.qestion}`).join(' ')}] \n Сгенерирован ответ: [${answers.map(answer => `${answer.id} <-- ${answer.answer}`).join(' ')}] \n Затраченно времени: [${(Date.now() - data_old)/1000} сек.] \n Откуда ответ: 	     [${"MultiBoost~"}] \n\n`
+        res.info = formatLogSections(formatSearchTitle("MultiBoost~", true), [
+            [
+                { label: "Сгенерирован ответ", value: answers.map(answer => `${answer.id} <-- ${answer.answer}`).join('; ') },
+                { label: "Исправление ошибок", value: answers.map(answer => `${answer.id} --> ${answer.qestion}`).join('; ') },
+                { label: `Найдено вариантов: [${answers.length}], затрачено времени`, value: `${(Date.now() - data_old) / 1000} сек.` },
+            ],
+        ], 'FINISH')
         res.status = true
+    } else {
+        const fields: LogField[] = [
+            { label: "Новых вопросов", value: educationQuestions.length },
+            { label: "Затрачено времени", value: `${(Date.now() - data_old) / 1000} сек.` },
+        ];
+
+        if (educationQuestions.length > 0) {
+            fields.push({ label: "Вопросы обучения", value: educationQuestions.join('; ') });
+        }
+
+        res.info = formatLogSections(
+            formatSearchTitle("MultiBoost~", false),
+            [fields],
+            educationQuestions.length > 0 ? 'EDUCATION' : 'NOT_FOUND',
+        );
     }
     return res
 }
