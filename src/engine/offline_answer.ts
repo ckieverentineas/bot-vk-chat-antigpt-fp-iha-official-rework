@@ -1,21 +1,36 @@
 import { root } from "..";
-import prisma from "../module/prisma";
 import { Input_Message_Cleaner } from "./clear_input";
-import { Answer_Core_Edition } from "./core/reseacher_controller";
 import { Sleep } from "./helper";
 import { Direct_Search } from "./reseacher/reseach_direct_boost";
 import Reseacher_New_Format from "./reseacher/reseacher_new_format";
-import { Replacer_System_Params } from "./reseacher/specializator";
+import { VK } from "vk-io";
 
-export async function Answer_Offline(vk: any) {
-    await vk.api.messages.send({
-        peer_id: root,
-        random_id: 0,
-        message: `Приступаем к считыванию оффлайн сообщений!`
-    });
-    const messages = await vk.api.messages.getConversations({
-        filter: 'unread'
-    });
+async function Send_Message_Safely(vk: VK, peerId: number, message: string): Promise<boolean> {
+    try {
+        await vk.api.messages.send({
+            peer_id: peerId,
+            random_id: 0,
+            message,
+        });
+        return true;
+    } catch (error) {
+        console.log(`Не удалось отправить сообщение peer_id ${peerId}: ${error}`);
+        return false;
+    }
+}
+
+export async function Answer_Offline(vk: VK): Promise<void> {
+    await Send_Message_Safely(vk, root, `Приступаем к считыванию оффлайн сообщений!`);
+
+    let messages;
+    try {
+        messages = await vk.api.messages.getConversations({
+            filter: 'unread'
+        });
+    } catch (error) {
+        console.log(`Не удалось получить оффлайн сообщения: ${error}`);
+        return;
+    }
     
     const unreadMessages = messages.items;
     
@@ -44,20 +59,16 @@ export async function Answer_Offline(vk: any) {
 			try {
 				//отправляем оптимальный ответ пользователю
                 // Отправляем ответное сообщение
-                await vk.api.messages.send({
-                    peer_id: peerId,
-                    random_id: 0,
-                    message: `Привет я снова в сети, ты пишешь: ${Input_Message_Cleaner(message.last_message.text)}, мой ответ: ${res.answer}`
-                });
-				console.log(res.info);
+                const answerWasSent = await Send_Message_Safely(
+                    vk,
+                    peerId,
+                    `Привет я снова в сети, ты пишешь: ${Input_Message_Cleaner(message.last_message.text)}, мой ответ: ${res.answer}`
+                );
+				if (answerWasSent) { console.log(res.info); }
 			} catch (e) {
 				console.log(`Проблема отправки сообщения в чат: ${e}`);
 			}
         }
     }
-    await vk.api.messages.send({
-        peer_id: root,
-        random_id: 0,
-        message: `Закончили считывать оффлайн сообщений!`
-    });
+    await Send_Message_Safely(vk, root, `Закончили считывать оффлайн сообщений!`);
 }

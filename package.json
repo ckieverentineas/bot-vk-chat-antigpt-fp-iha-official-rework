@@ -9,8 +9,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc --project src/tsconfig.json",
-    "start": "ts-node src/index.ts",
-    "dev": "ts-node-dev --max-old-space-size=1536 --optimize-for-size --no-notify src/index.ts --optimize-for-size max_new_space_size=1536 --optimize-for-size"
+    "start": "ts-node --project src/tsconfig.json src/index.ts",
+    "dev": "ts-node-dev --project src/tsconfig.json --max-old-space-size=1536 --optimize-for-size --no-notify src/index.ts --optimize-for-size max_new_space_size=1536 --optimize-for-size"
   },
   "keywords": [],
   "author": "",

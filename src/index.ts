@@ -177,7 +177,9 @@ Promise.all(vkEntities.map(async entity => {
 		  });*/
 		vk.updates.start().then(() => {
 			console.log('Бот успешно запущен и готов к эксплуатации!')
-			Answer_Offline(vk)
+			Answer_Offline(vk).catch((error) => {
+				console.log(`Проблема считывания оффлайн сообщений: ${error}`);
+			})
 		}).catch(console.log);
 	})
 })
