@@ -1,6 +1,6 @@
 import { Context, VK } from 'vk-io';
 import { HearManager } from '@vk-io/hear';
-import { QuestionManager, IQuestionMessageContext } from 'vk-io-question';
+import { QuestionFlowManager, QuestionMessageContext } from './module/question_flow';
 import { registerUserRoutes } from './engine/player'
 import { InitGameRoutes } from './engine/init';
 import { registerCommandRoutes } from './engine/command';
@@ -17,6 +17,13 @@ import { Answer_Offline } from './engine/offline_answer';
 import { parseVkEntitiesEnv, VkEntity, VkEntityType } from './module/vk_entities_env';
 import { createLogger, formatIncomingMessageLog, formatLogSections, logWithContext, setContextLogger } from './module/logger';
 import { getSearchModeLabel, getSearchSettings } from './module/search_config';
+import {
+	AutoReplyTarget,
+	formatRuntimeSettings,
+	getAutoReplyDecision,
+	getRuntimeSettings,
+	loadRuntimeSettingsFromDatabase,
+} from './module/runtime_flags';
 dotenv.config();
 
 const systemLogger = createLogger('vk-chat-bot');
@@ -30,12 +37,18 @@ systemLogger(formatLogSections('{SEARCH_MODE}', [
 	],
 ], 'READY'));
 
+const runtimeSettingsReady = loadRuntimeSettingsFromDatabase()
+	.then((settings) => {
+		systemLogger(formatRuntimeSettings(settings));
+	})
+	.catch((error) => {
+		systemLogger(`Не удалось загрузить runtime-настройки из БД, используются значения по умолчанию: ${error}`);
+	});
 
 export const root: number = Number(process.env.root) //root user
 
 //инициализация
-const questionManager = new QuestionManager();
-const hearManager = new HearManager<IQuestionMessageContext>();
+const hearManager = new HearManager<QuestionMessageContext>();
 InitGameRoutes(hearManager)
 registerUserRoutes(hearManager)
 registerCommandRoutes(hearManager)
@@ -158,6 +171,14 @@ function Message_Channel_Get(context: Context): string {
 	return context.isChat ? 'Беседа' : 'Личные сообщения';
 }
 
+function Auto_Reply_Target_Get(context: Context): AutoReplyTarget {
+	if (context.isWallComment) {
+		return 'wall-comment';
+	}
+
+	return context.isChat ? 'chat' : 'private-message';
+}
+
 const configuredVks: ConfiguredVk[] = [];
 
 Promise.all(vkEntities.map(async entity => {
@@ -181,9 +202,11 @@ Promise.all(vkEntities.map(async entity => {
 		systemLogger(`Не удалось определить VK-сущность по токену: ${error}`);
 	}
 	return [vks, vks_info]
-})).then(()=>{
+})).then(async ()=>{
+	await runtimeSettingsReady;
 	configuredVks.map(({ vk, info }) => {
 		const logger = createLogger(info.name);
+		const questionManager = new QuestionFlowManager();
 		//console.log(vks_info)
 		//настройка
 		vk.updates.use(async (context: Context, next) => {
@@ -195,6 +218,15 @@ Promise.all(vkEntities.map(async entity => {
 		//миддлевар для предварительной обработки сообщений
 		vk.updates.on('message_new', async (context: Context, next) => {
 			const incomingMessage = context.text;
+			if (context.isOutbox == false && context.senderId > 0 && incomingMessage) {
+				const autoReplyDecision = getAutoReplyDecision(Auto_Reply_Target_Get(context));
+
+				if (!autoReplyDecision.allowed) {
+					await Log_Incoming_Message(context, autoReplyDecision.decision, incomingMessage);
+					logWithContext(context, autoReplyDecision.reason ?? 'Автоответ отключен runtime-тумблером.');
+					return await next();
+				}
+			}
 			//модуль предобработки сообщений
 			if (await Prefab_Engine(context)) {
 				if (context.isOutbox == false && context.senderId > 0 && incomingMessage) {
@@ -237,6 +269,15 @@ Promise.all(vkEntities.map(async entity => {
 			setContextLogger(context, logger);
 			context.senderId = context.fromId
 			const incomingMessage = context.text;
+			if (context.fromId > 0 && incomingMessage) {
+				const autoReplyDecision = getAutoReplyDecision('wall-comment');
+
+				if (!autoReplyDecision.allowed) {
+					await Log_Incoming_Message(context, autoReplyDecision.decision, incomingMessage);
+					logWithContext(context, autoReplyDecision.reason ?? 'Автоответ отключен runtime-тумблером.');
+					return await next();
+				}
+			}
 			//модуль предобработки сообщений
 			if (await Prefab_Engine(context)) {
 				if (context.fromId > 0 && incomingMessage) {
@@ -289,9 +330,13 @@ Promise.all(vkEntities.map(async entity => {
 		vk.updates.start().then(() => {
 			const vkLink = info.type === 'group' ? `@club${info.idvk}` : `@id${info.idvk}`;
 			logger(`Бот ${info.type} ${vkLink} успешно запущен и готов к эксплуатации!`)
-			Answer_Offline(vk, logger).catch((error) => {
-				logger(`Проблема считывания оффлайн сообщений: ${error}`);
-			})
+			if (getRuntimeSettings().offlineReadingEnabled) {
+				Answer_Offline(vk, logger).catch((error) => {
+					logger(`Проблема считывания оффлайн сообщений: ${error}`);
+				})
+			} else {
+				logger('Считывание оффлайн сообщений отключено runtime-тумблером.');
+			}
 		}).catch((error) => {
 			logger(`Проблема запуска VK updates: ${error}`);
 		});

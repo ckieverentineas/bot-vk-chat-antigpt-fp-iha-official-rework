@@ -1,7 +1,7 @@
 import { User } from "@prisma/client";
 import path from "path";
 import { HearManager } from "@vk-io/hear";
-import { IQuestionMessageContext } from "vk-io-question";
+import { QuestionMessageContext } from "../module/question_flow";
 import { root, starting_date } from '../index';
 import { User_Access, User_Info} from './helper';
 import prisma from "../module/prisma";
@@ -12,8 +12,15 @@ import { Editor_Engine } from "./editor/editor_engine";
 import { Editor_Engine_BlackList } from "./prefab/blacklist_editor";
 import { getContextLogger, logWithContext } from "../module/logger";
 import { PROJECT_VERSION_LABEL } from "../module/project_version";
+import {
+    formatRuntimeSettings,
+    getRuntimeFeatureLabel,
+    getRuntimeSettings,
+    parseRuntimeModeCommand,
+    saveRuntimeFeatureToDatabase,
+} from "../module/runtime_flags";
 
-export function registerUserRoutes(hearManager: HearManager<IQuestionMessageContext>): void {
+export function registerUserRoutes(hearManager: HearManager<QuestionMessageContext>): void {
     hearManager.hear(/!база/, async (context) => {
         if (context.isOutbox == false && context.senderId == root) {
             await Save_Answers_and_Question_In_DB(context)
@@ -28,6 +35,27 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
             await context.send(`Панель администратора: \n 🔸 Версия: ${PROJECT_VERSION_LABEL} \n 👤 Личные сообщения: Разрешены \n 👥 Беседы: Разрешены \n\n ⚙ Защиты: 🛡Антиспам \n 🛡"Я не повторяюсь" \n 🛡"Ты повторяешься" \n 🛡"Молчать, когда два бота вместе" \n 🛡"Упомянули не меня" \n 🛡"Ответили не мне" \n 🛡"Имунитет от любителей писать одно слово в сообщении" \n 📚 Количество вопросов ${count_question} и ответов к ним: ${count_answer} \n ☠ Количество стоп-слов в blacklist ${count_blacklist} \n\n 📝 Поисковые движки: \n 🔍 DirectBoost - ищет ответы 1 к 1; \n 🔍 MultiBoost - ищет для кучи предложений нечетко.`)
         }
     })
+    hearManager.hear(/!режим/, async (context) => {
+        if (context.isOutbox == false && (context.senderId == root || await User_Access(context) == true) && context.text) {
+            const command = parseRuntimeModeCommand(context.text);
+
+            if (command === undefined) {
+                await context.send(formatRuntimeSettings(getRuntimeSettings()));
+                return;
+            }
+
+            try {
+                const settings = await saveRuntimeFeatureToDatabase(command.feature, command.enabled);
+                await context.send([
+                    `${getRuntimeFeatureLabel(command.feature)}: ${command.enabled ? 'включены' : 'отключены'}`,
+                    '',
+                    formatRuntimeSettings(settings),
+                ].join('\n'));
+            } catch (error) {
+                await context.send(`Не удалось сохранить runtime-настройку в БД: ${error}`);
+            }
+        }
+    })
     hearManager.hear(/!помощь/, async (context) => {
         if (context.isOutbox == false && (context.senderId == root || await User_Access(context) == true)) {
             await context.send(`☠ Команды бота уже сделанные:
@@ -37,6 +65,8 @@ export function registerUserRoutes(hearManager: HearManager<IQuestionMessageCont
                 \n⭐ !юзердроп - удаляет всех пользователей
                 \n⭐ !дамп - сохраняет txt в корне проекта под названием "questions_and_answers.txt" согласно формату
                 \n👥 !аптайм - показывает время работы с момента запуска бота
+                \n👥 !режим - показывает runtime-тумблеры бота
+                \n👥 !режим ответы/лс/беседы/стена/оффлайн вкл|выкл - динамически включает или отключает функционал
                 \n👥 !права idvk - где idvk, пишем уникальный идентификатор пользователя вк или упоминаем пользователя, для выдачи снятия прав администратора
                 \n🌐 !обучение - достает неизвестные вопросы, обнаруженные ботом и предлагает их скорректировать и дать ответы на них.
                 \n🌐 !редактирование - позволяет по ID вопроса/ответа удалить или скорректировать вопрос/ответ.

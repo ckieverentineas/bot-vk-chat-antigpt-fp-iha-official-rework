@@ -3,5 +3,6 @@ node_modules
 src/temp
 build
 prisma/dev.db
+prisma/*.db-journal
 .env
 prisma/bigdev.db

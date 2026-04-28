@@ -1,7 +1,7 @@
 import { HearManager } from "@vk-io/hear";
-import { IQuestionMessageContext } from "vk-io-question";
+import { QuestionMessageContext } from "../module/question_flow";
 
-export function InitGameRoutes(hearManager: HearManager<IQuestionMessageContext>): void {
+export function InitGameRoutes(hearManager: HearManager<QuestionMessageContext>): void {
 	/*hearManager.hear(/init/, async (context: any) => {
 		await prisma.role.create({
 			data: {

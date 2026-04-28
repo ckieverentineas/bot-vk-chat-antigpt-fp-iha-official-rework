@@ -1,9 +1,9 @@
 import { HearManager } from "@vk-io/hear";
-import { IQuestionMessageContext } from "vk-io-question";
+import { QuestionMessageContext } from "../module/question_flow";
 import { root } from "..";
 const rq = require("prequest");
 
-export function registerCommandRoutes(hearManager: HearManager<IQuestionMessageContext>): void {
+export function registerCommandRoutes(hearManager: HearManager<QuestionMessageContext>): void {
     hearManager.hear(/!погода/, async (context) => {
         if (context.isOutbox == false && context?.text != undefined) {
             const match = context.text.match(/^(?:!погода|!weather)\s?(.*)/i);

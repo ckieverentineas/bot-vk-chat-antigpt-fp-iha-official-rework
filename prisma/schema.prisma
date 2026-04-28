@@ -46,3 +46,10 @@ model BlackList {
   id      Int      @id @default(autoincrement())
   text    String   @unique
 }
+
+model RuntimeSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
