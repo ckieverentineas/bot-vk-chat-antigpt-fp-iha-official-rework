@@ -12,7 +12,7 @@ import { updateStatuses } from './module/status_changer';
 import prisma from './module/prisma';
 import { Prefab_Engine } from './engine/prefab/prefab_engine';
 import { Replacer_System_Params } from './engine/reseacher/specializator';
-import { User_Info } from './engine/helper';
+import { User_Access, User_Info } from './engine/helper';
 import { Answer_Offline } from './engine/offline_answer';
 import { parseVkEntitiesEnv, VkEntity, VkEntityType } from './module/vk_entities_env';
 import { createLogger, formatIncomingMessageLog, formatLogSections, logWithContext, setContextLogger } from './module/logger';
@@ -24,6 +24,11 @@ import {
 	getRuntimeSettings,
 	loadRuntimeSettingsFromDatabase,
 } from './module/runtime_flags';
+import {
+	getChatPeerId,
+	isContextChatIgnored,
+	parseIgnoredChatCommand,
+} from './module/ignored_chats';
 dotenv.config();
 
 const systemLogger = createLogger('vk-chat-bot');
@@ -179,6 +184,24 @@ function Auto_Reply_Target_Get(context: Context): AutoReplyTarget {
 	return context.isChat ? 'chat' : 'private-message';
 }
 
+async function Should_Process_Ignored_Chat_Command(context: Context): Promise<boolean> {
+	if (!context.isChat || !context.text) {
+		return true;
+	}
+
+	if (!await isContextChatIgnored(context)) {
+		return true;
+	}
+
+	if (parseIgnoredChatCommand(context.text) && (context.senderId === root || await User_Access(context))) {
+		return true;
+	}
+
+	await Log_Incoming_Message(context, 'DENIED', context.text);
+	logWithContext(context, `Беседа ${getChatPeerId(context)} находится в игноре.`);
+	return false;
+}
+
 const configuredVks: ConfiguredVk[] = [];
 
 Promise.all(vkEntities.map(async entity => {
@@ -211,6 +234,13 @@ Promise.all(vkEntities.map(async entity => {
 		//настройка
 		vk.updates.use(async (context: Context, next) => {
 			setContextLogger(context, logger);
+			return next();
+		});
+		vk.updates.on('message_new', async (context: Context, next) => {
+			if (!await Should_Process_Ignored_Chat_Command(context)) {
+				return;
+			}
+
 			return next();
 		});
 		vk.updates.use(questionManager.middleware);

@@ -2,6 +2,7 @@ import { Context } from "vk-io";
 import prisma from "../../module/prisma";
 import Black_List_Engine from "./blacklist";
 import { logWithContext } from "../../module/logger";
+import { isContextChatIgnored } from "../../module/ignored_chats";
 
 async function User_Registration(context: any) {
     const user: any = await prisma.user.findFirst({ where: { idvk: context.senderId } })
@@ -20,6 +21,7 @@ export async function Prefab_Engine(context: Context) {
     if (context.isOutbox == true) { return true; }
     //console.log(context)
     await User_Registration(context)
+    if (await isContextChatIgnored(context)) { return true; }
     //модуль игнорирования пользователей
     if (await User_ignore_Check(context)) { return true; }
     //модуль обнаружения стикеров

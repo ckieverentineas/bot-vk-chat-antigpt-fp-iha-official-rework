@@ -53,3 +53,14 @@ model RuntimeSetting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+model IgnoredChat {
+  id            Int      @id @default(autoincrement())
+  peerId        BigInt   @unique
+  title         String   @default("")
+  ignored       Boolean  @default(true)
+  createdByIdvk Int?
+  reason        String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

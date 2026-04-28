@@ -115,12 +115,12 @@ async function processInputData(
 
     if (answers.length > 0) {
         res.answer = formatAnswerText(answers);
-        res.info = formatSuccessLog(answers, data_old);
+        res.info = formatSuccessLog(context.text ?? res.text, answers, data_old);
         res.status = true;
         return res;
     }
 
-    res.info = formatNotFoundLog(educationQuestions, data_old);
+    res.info = formatNotFoundLog(context.text ?? res.text, educationQuestions, data_old);
     return res;
 }
 
@@ -193,9 +193,10 @@ function formatAnswerText(answers: readonly SelectedAnswer[]): string {
         .join("");
 }
 
-function formatSuccessLog(answers: readonly SelectedAnswer[], startedAt: number): string {
+function formatSuccessLog(originalMessage: string, answers: readonly SelectedAnswer[], startedAt: number): string {
     return formatLogSections(formatSearchTitle("MultiBoost~", true), [
         [
+            { label: "Исходное сообщение", value: originalMessage },
             { label: "Сгенерирован ответ", value: answers.map(answer => `${answer.id} <-- ${answer.answer}`).join("; ") },
             { label: "Исправление ошибок", value: answers.map(answer => `${answer.id} --> ${answer.question}`).join("; ") },
             { label: `Найдено вариантов: [${answers.length}], затрачено времени`, value: `${(Date.now() - startedAt) / 1000} сек.` },
@@ -203,8 +204,9 @@ function formatSuccessLog(answers: readonly SelectedAnswer[], startedAt: number)
     ], "FINISH");
 }
 
-function formatNotFoundLog(educationQuestions: readonly string[], startedAt: number): string {
+function formatNotFoundLog(originalMessage: string, educationQuestions: readonly string[], startedAt: number): string {
     const fields: LogField[] = [
+        { label: "Исходное сообщение", value: originalMessage },
         { label: "Новых вопросов", value: educationQuestions.length },
         { label: "Затрачено времени", value: `${(Date.now() - startedAt) / 1000} сек.` },
     ];

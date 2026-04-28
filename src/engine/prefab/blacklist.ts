@@ -29,6 +29,11 @@ interface BlackListScore {
     readonly score: number;
 }
 
+export interface BlackListDetection {
+    readonly text: string;
+    readonly score: number;
+}
+
 const blackListRepository: TextSearchRepository<BlackList> = {
     async loadAll(): Promise<readonly BlackList[]> {
         return prisma.blackList.findMany({
@@ -67,6 +72,21 @@ async function findClosestMatches(queries: readonly string[]): Promise<BlackList
     }));
 }
 
+export async function findBlackListDetection(text: string): Promise<BlackListDetection | undefined> {
+    const sentenceArray = await tokenizeText(text);
+    const output = await findClosestMatches(sentenceArray);
+    const match = output[0]?.sentenceQuestion[0];
+
+    if (match === undefined) {
+        return undefined;
+    }
+
+    return {
+        text: match.question.text,
+        score: match.score,
+    };
+}
+
 function calculateAcceptedBlackListScore(queryQuestion: string, blackListItem: BlackList): number {
     const metrics = calculateBlackListScore(queryQuestion, blackListItem.text);
     const isAccepted =
@@ -94,19 +114,17 @@ function calculateBlackListScore(queryQuestion: string, blackListText: string): 
 }
 
 async function Black_List_Engine(res: BlackListResult, context: Context): Promise<BlackListResult> {
-    const sentenceArray = await tokenizeText(context.text!);
-    const output = await findClosestMatches(sentenceArray);
-    const match = output[0]?.sentenceQuestion[0];
+    const match = await findBlackListDetection(context.text!);
 
     if (match === undefined) {
         return res;
     }
 
     res.status = true;
-    await context.send(`Обнаружено стоп-слово ${JSON.stringify(match.question)}, отвечать не буду`);
+    await context.send(`Обнаружено стоп-слово ${JSON.stringify(match.text)}, отвечать не буду`);
     logWithContext(context, formatLogFields([
         { label: "Проверяем сообщение", value: res.text },
-        { label: "Найдено стоп-слово", value: match.question.text },
+        { label: "Найдено стоп-слово", value: match.text },
         { label: "Очки", value: match.score },
         { label: "Останавливаем ответ", value: "подтверждено" },
     ]));

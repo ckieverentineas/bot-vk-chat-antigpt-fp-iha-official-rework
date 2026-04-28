@@ -11,6 +11,7 @@ export async function Direct_Search(res: { text: string, answer: string, info: s
       res.answer = answer.answer;
       res.info = formatLogSections(formatSearchTitle("DirectBoost", true), [
         [
+          { label: "Исходное сообщение", value: res.text },
           { label: "Сгенерирован ответ", value: answer.answer },
           { label: "Затрачено времени", value: `${(Date.now() - data_old) / 1000} сек.` },
         ],

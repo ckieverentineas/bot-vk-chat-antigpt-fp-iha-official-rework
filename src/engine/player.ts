@@ -10,8 +10,17 @@ import { Save_Answers_and_Question_In_DB, exportQuestionsAndAnswers } from "./pa
 import { Education_Engine } from "./education/education_egine";
 import { Editor_Engine } from "./editor/editor_engine";
 import { Editor_Engine_BlackList } from "./prefab/blacklist_editor";
+import { findBlackListDetection } from "./prefab/blacklist";
+import { buildAsciiSayMessage, parseAsciiSayCommand, validateAsciiSayText } from "./ascii_say";
 import { getContextLogger, logWithContext } from "../module/logger";
 import { PROJECT_VERSION_LABEL } from "../module/project_version";
+import {
+    formatIgnoredChatToggleMessage,
+    getChatPeerId,
+    getIgnoredChatTitle,
+    parseIgnoredChatCommand,
+    toggleIgnoredChat,
+} from "../module/ignored_chats";
 import {
     formatRuntimeSettings,
     getRuntimeFeatureLabel,
@@ -21,6 +30,35 @@ import {
 } from "../module/runtime_flags";
 
 export function registerUserRoutes(hearManager: HearManager<QuestionMessageContext>): void {
+    hearManager.hear(/^!(?:скажи|say)(?:\s|$)/i, async (context) => {
+        if (context.isOutbox || !context.text) {
+            return;
+        }
+
+        if (await Prefab_Engine(context)) {
+            return;
+        }
+
+        const rawText = parseAsciiSayCommand(context.text);
+        if (rawText === undefined) {
+            return;
+        }
+
+        const validation = validateAsciiSayText(rawText);
+        if (!validation.ok) {
+            await context.send(validation.reason);
+            return;
+        }
+
+        const blackListDetection = await findBlackListDetection(validation.text);
+        if (blackListDetection !== undefined) {
+            logWithContext(context, `Команда !скажи отклонена стоп-словом [${blackListDetection.text}]`);
+            await context.send('Не могу это нарисовать: текст не прошел фильтр.');
+            return;
+        }
+
+        await context.send(buildAsciiSayMessage(validation.text));
+    })
     hearManager.hear(/!база/, async (context) => {
         if (context.isOutbox == false && context.senderId == root) {
             await Save_Answers_and_Question_In_DB(context)
@@ -61,12 +99,14 @@ export function registerUserRoutes(hearManager: HearManager<QuestionMessageConte
             await context.send(`☠ Команды бота уже сделанные:
                 \n👤 !инфа - выдает информацию о вас и вашем статусе для релевантности бота, конечно вам покажут не все=)
                 \n👥 !конфиг - показывает текущую конфигурацию бота
-                \n👥 !игнор idvk - где idvk, пишем уникальный идентификатор пользователя вк или упоминаем пользователя, для включения или отключения режима его игнорирования
+                \n👥 !игнор idvk - включает или отключает игнор пользователя
+                \n👥 !игнор беседа - включает или отключает игнор текущей беседы
                 \n⭐ !юзердроп - удаляет всех пользователей
                 \n⭐ !дамп - сохраняет txt в корне проекта под названием "questions_and_answers.txt" согласно формату
                 \n👥 !аптайм - показывает время работы с момента запуска бота
                 \n👥 !режим - показывает runtime-тумблеры бота
                 \n👥 !режим ответы/лс/беседы/стена/оффлайн вкл|выкл - динамически включает или отключает функционал
+                \n👤 !скажи текст - рисует короткий текст ASCII-артом с фильтрацией
                 \n👥 !права idvk - где idvk, пишем уникальный идентификатор пользователя вк или упоминаем пользователя, для выдачи снятия прав администратора
                 \n🌐 !обучение - достает неизвестные вопросы, обнаруженные ботом и предлагает их скорректировать и дать ответы на них.
                 \n🌐 !редактирование - позволяет по ID вопроса/ответа удалить или скорректировать вопрос/ответ.
@@ -80,6 +120,27 @@ export function registerUserRoutes(hearManager: HearManager<QuestionMessageConte
     })
     hearManager.hear(/!игнор/, async (context) => {
         if (context.isOutbox == false && (context.senderId == root || await User_Access(context) == true) && context.text) {
+            if (parseIgnoredChatCommand(context.text)) {
+                const peerId = getChatPeerId(context);
+
+                if (peerId === undefined) {
+                    await context.send('Эта команда работает только в беседе.');
+                    return;
+                }
+
+                const result = await toggleIgnoredChat({
+                    peerId,
+                    title: getIgnoredChatTitle(context),
+                    createdByIdvk: context.senderId,
+                    reason: 'manual command',
+                });
+                const message = formatIgnoredChatToggleMessage(result);
+
+                await context.send(message);
+                logWithContext(context, message);
+                return;
+            }
+
             const target: number = Number(context.text.replace(/[^0-9]/g,"")) || 0
             if (target > 0) {
                 const user: any = await prisma.user.findFirst({ where: { idvk: target } })
